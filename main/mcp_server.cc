@@ -4,6 +4,7 @@
  */
 
 #include "mcp_server.h"
+#include "radio_player.h"8
 #include <esp_app_desc.h>
 #include <esp_log.h>
 #include <algorithm>
@@ -20,7 +21,27 @@
 
 #define TAG "MCP"
 
-McpServer::McpServer() {}
+McpServer::McpServer() {
+    AddTool("self.radio.play",
+        "Play an online internet radio stream from a direct HTTP MP3 URL.",
+        PropertyList({
+            Property("url", kPropertyTypeString)
+        }),
+        [](const PropertyList& properties) -> ReturnValue {
+            std::string url = properties["url"].value<std::string>();
+            RadioPlayer::GetInstance().Play(url);
+            return true;
+        });
+
+    AddTool("self.radio.stop",
+        "Stop the currently playing online internet radio stream.",
+        PropertyList(),
+        [](const PropertyList& properties) -> ReturnValue {
+            RadioPlayer::GetInstance().Stop();
+            return true;
+        });
+}
+
 
 McpServer::~McpServer() = default;
 
