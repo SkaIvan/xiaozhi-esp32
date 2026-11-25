@@ -4,7 +4,7 @@
  */
 
 #include "mcp_server.h"
-#include "radio_player.h"8
+#include "radio_player.h"
 #include <esp_app_desc.h>
 #include <esp_log.h>
 #include <algorithm>
