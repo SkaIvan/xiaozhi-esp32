@@ -60,8 +60,9 @@ void RadioPlayer::StreamTask(void* param) {
     std::vector<int16_t> pcm_buf(2304);
     size_t bytes_left = 0;
 
-    int original_rate = codec->output_sample_rate();
-    codec->SetOutputSampleRate(44100);
+    int target_rate = codec->output_sample_rate();
+    if (target_rate <= 0) target_rate = 24000;
+
     codec->EnableOutput(true);
 
     while (self->is_playing_) {
@@ -94,12 +95,19 @@ void RadioPlayer::StreamTask(void* param) {
             bytes_left -= consumed;
 
             if (out_frame.decoded_size > 0 && app.GetDeviceState() == kDeviceStateIdle) {
-                size_t samples = out_frame.decoded_size / sizeof(int16_t);
-                std::vector<int16_t> output_samples(samples);
-                for (size_t i = 0; i < samples; i++) {
-                    output_samples[i] = static_cast<int16_t>(pcm_buf[i] * 0.45f);
+                size_t in_samples = out_frame.decoded_size / sizeof(int16_t);
+                // Пересчитываем частоту из 44100 Гц (радио) в частоту кодека (target_rate)
+                double ratio = 44100.0 / (double)target_rate;
+                size_t out_samples = (size_t)(in_samples / ratio);
+                if (out_samples > 0) {
+                    std::vector<int16_t> output_samples(out_samples);
+                    for (size_t i = 0; i < out_samples; i++) {
+                        size_t src_idx = (size_t)(i * ratio);
+                        if (src_idx >= in_samples) src_idx = in_samples - 1;
+                        output_samples[i] = static_cast<int16_t>(pcm_buf[src_idx] * 0.45f);
+                    }
+                    codec->OutputData(output_samples);
                 }
-                codec->OutputData(output_samples);
             }
         } else {
             if (bytes_left > 1) {
@@ -108,8 +116,6 @@ void RadioPlayer::StreamTask(void* param) {
             }
         }
     }
-
-    codec->SetOutputSampleRate(original_rate);
 
     esp_mp3_dec_close(decoder);
     esp_http_client_close(client);
