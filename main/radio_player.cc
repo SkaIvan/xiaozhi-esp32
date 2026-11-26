@@ -5,6 +5,7 @@
 #include <esp_log.h>
 #include <esp_http_client.h>
 #include <esp_mp3_dec.h>
+#include <esp_crt_bundle.h>
 #include <vector>
 
 static const char* TAG = "RadioPlayer";
@@ -19,7 +20,7 @@ void RadioPlayer::Play(const std::string& url) {
 void RadioPlayer::Stop() {
     is_playing_ = false;
     if (task_handle_ != nullptr) {
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(150));
         task_handle_ = nullptr;
     }
 }
@@ -29,10 +30,17 @@ void RadioPlayer::StreamTask(void* param) {
     auto* codec = Board::GetInstance().GetAudioCodec();
     auto& app = Application::GetInstance();
 
+    vTaskDelay(pdMS_TO_TICKS(1500));
+
+    if (app.GetDeviceState() == kDeviceStateListening) {
+        app.SetDeviceState(kDeviceStateIdle);
+    }
+
     esp_http_client_config_t config = {};
     config.url = self->current_url_.c_str();
     config.buffer_size = 4096;
     config.timeout_ms = 5000;
+    config.crt_bundle_attach = esp_crt_bundle_attach;
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (esp_http_client_open(client, 0) != ESP_OK) {
@@ -52,6 +60,8 @@ void RadioPlayer::StreamTask(void* param) {
     std::vector<int16_t> pcm_buf(2304);
     size_t bytes_left = 0;
 
+    int original_rate = codec->output_sample_rate();
+    codec->SetOutputSampleRate(44100);
     codec->EnableOutput(true);
 
     while (self->is_playing_) {
@@ -83,9 +93,12 @@ void RadioPlayer::StreamTask(void* param) {
             }
             bytes_left -= consumed;
 
-            if (out_frame.decoded_size > 0) {
+            if (out_frame.decoded_size > 0 && app.GetDeviceState() == kDeviceStateIdle) {
                 size_t samples = out_frame.decoded_size / sizeof(int16_t);
-                std::vector<int16_t> output_samples(pcm_buf.begin(), pcm_buf.begin() + samples);
+                std::vector<int16_t> output_samples(samples);
+                for (size_t i = 0; i < samples; i++) {
+                    output_samples[i] = static_cast<int16_t>(pcm_buf[i] * 0.45f);
+                }
                 codec->OutputData(output_samples);
             }
         } else {
@@ -95,6 +108,8 @@ void RadioPlayer::StreamTask(void* param) {
             }
         }
     }
+
+    codec->SetOutputSampleRate(original_rate);
 
     esp_mp3_dec_close(decoder);
     esp_http_client_close(client);
