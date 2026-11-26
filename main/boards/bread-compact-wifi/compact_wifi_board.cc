@@ -6,6 +6,7 @@
 #include "button.h"
 #include "config.h"
 #include "mcp_server.h"
+#include "radio_player.h"
 #include "lamp_controller.h"
 #include "led/single_led.h"
 #include "assets/lang_config.h"
@@ -150,6 +151,26 @@ private:
     // 物联网初始化，逐步迁移到 MCP 协议
     void InitializeTools() {
         static LampController lamp(LAMP_GPIO);
+                auto& mcp_server = McpServer::GetInstance();
+        mcp_server.AddTool("self.radio.play",
+            "Play online internet radio stream by direct HTTP MP3 URL.",
+            PropertyList({
+                Property("url", kPropertyTypeString)
+            }),
+            [](const PropertyList& properties) -> ReturnValue {
+                std::string url = properties["url"].value<std::string>();
+                RadioPlayer::GetInstance().Play(url);
+                return true;
+            });
+
+        mcp_server.AddTool("self.radio.stop",
+            "Stop playing online internet radio stream.",
+            PropertyList(),
+            [](const PropertyList& properties) -> ReturnValue {
+                RadioPlayer::GetInstance().Stop();
+                return true;
+            });
+
     }
 
 public:
